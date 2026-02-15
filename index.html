@@ -14,7 +14,6 @@
     .left { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
     .small { font-size: 13px; opacity: 0.85; line-height: 1.35; }
     .error { font-size: 13px; color: #ffb4b4; white-space: pre-wrap; margin-top: 10px; }
-
     canvas { width: 100%; max-width: 560px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.25); }
 
     input[type="file"] { color: #fff; }
@@ -87,9 +86,10 @@
 
       <div class="small" style="margin-top: 12px;">
         Please keep these files in the same folder as this page:
+        <span class="pill">bg.jpg</span>
         <span class="pill">circle.png</span>
         <span class="pill">corner.jpg</span>
-        <span class="pill">logo.png (optional)</span>
+        <span class="pill">logo.png</span>
       </div>
 
       <div id="status" class="small" style="margin-top: 10px;"></div>
@@ -122,6 +122,21 @@
       let userImg = null;
       let lastBlobUrl = null;
 
+      // Cache assets (avoids reloading each render)
+      const cache = new Map();
+      async function loadImage(src) {
+        if (cache.has(src)) return cache.get(src);
+        const p = new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`Could not load "${src}". Please make sure it is in the same folder as this page.`));
+          img.src = src;
+        });
+        cache.set(src, p);
+        return p;
+      }
+
       const setError = (msg) => (elErr.textContent = msg || "");
       const setStatus = (msg) => (elStatus.textContent = msg || "");
 
@@ -137,16 +152,6 @@
         labelCorner.classList.toggle("on", on);
       }
 
-      function loadImage(src) {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error(`Could not load "${src}". Please make sure the file is in the same folder as this page.`));
-          img.src = src;
-        });
-      }
-
       function readFileAsImage(file) {
         return new Promise((resolve, reject) => {
           const url = URL.createObjectURL(file);
@@ -157,6 +162,7 @@
         });
       }
 
+      // center-crop cover
       function drawCover(img, dx, dy, dw, dh) {
         const iw = img.naturalWidth || img.width;
         const ih = img.naturalHeight || img.height;
@@ -174,35 +180,57 @@
       async function render() {
         setError("");
         elDownload.disabled = true;
-
         ctx.clearRect(0, 0, SIZE, SIZE);
 
         if (!userImg) {
-          setStatus("Upload a photo to see a preview.");
+          // Show just the background + overlay as a nicer empty-state preview
+          try {
+            const bg = await loadImage("bg.jpg");
+            drawCover(bg, 0, 0, SIZE, SIZE);
+
+            const overlaySrc = getMode() === "circle" ? "circle.png" : "corner.jpg";
+            const overlay = await loadImage(overlaySrc);
+            ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
+
+            const logo = await loadImage("logo.png");
+            const pad = 28;
+            const w = 240;
+            const h = (logo.naturalHeight / logo.naturalWidth) * w;
+            ctx.globalAlpha = 0.95;
+            ctx.drawImage(logo, SIZE - w - pad, SIZE - h - pad, w, h);
+            ctx.globalAlpha = 1;
+
+            setStatus("Upload a photo to personalize it.");
+          } catch {
+            setStatus("Upload a photo to see a preview.");
+          }
           return;
         }
 
         try {
+          // 1) background
+          const bg = await loadImage("bg.jpg");
+          drawCover(bg, 0, 0, SIZE, SIZE);
+
+          // 2) user photo (on top of background)
           drawCover(userImg, 0, 0, SIZE, SIZE);
 
+          // 3) frame overlay
           const overlaySrc = getMode() === "circle" ? "circle.png" : "corner.jpg";
           const overlay = await loadImage(overlaySrc);
           ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
 
-          // optional logo (silently skipped if missing)
-          try {
-            const logo = await loadImage("logo.png");
-            const pad = 28;
-            const maxW = 240;
-            const scale = Math.min(1, maxW / (logo.naturalWidth || logo.width));
-            const w = (logo.naturalWidth || logo.width) * scale;
-            const h = (logo.naturalHeight || logo.height) * scale;
+          // 4) corner logo (required)
+          const logo = await loadImage("logo.png");
+          const pad = 28;
+          const logoW = 240; // resize here
+          const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW;
 
-            ctx.globalAlpha = 0.95;
-            ctx.drawImage(logo, SIZE - w - pad, SIZE - h - pad, w, h);
-            ctx.globalAlpha = 1;
-          } catch (_) {}
+          ctx.globalAlpha = 0.95;
+          ctx.drawImage(logo, SIZE - logoW - pad, SIZE - logoH - pad, logoW, logoH);
+          ctx.globalAlpha = 1;
 
+          // export
           canvas.toBlob((blob) => {
             if (!blob) { setError("PNG export failed in this browser."); return; }
             if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
@@ -210,6 +238,7 @@
             elDownload.disabled = false;
             setStatus("Ready to download.");
           }, "image/png");
+
         } catch (e) {
           setError(e.message || String(e));
         }
@@ -247,6 +276,7 @@
       // init
       setMode("circle");
       setStatus("Upload a photo to see a preview.");
+      render();
     })();
   </script>
 </body>
