@@ -10,6 +10,21 @@
       margin: 0; padding: 24px; color: #fff;
       background: #0b1020 url("bg.jpg") center/cover no-repeat fixed;
     }
+
+    /* Page UI logo (NOT part of the exported image) */
+    .siteLogo {
+      position: fixed;
+      top: 20px;
+      left: 20px; /* change to right: 20px; if you want top-right */
+      width: 140px;
+      height: auto;
+      z-index: 1000;
+      filter: drop-shadow(0 8px 18px rgba(0,0,0,0.45));
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: none; /* won't block clicks */
+    }
+
     .wrap { max-width: 820px; margin: 0 auto; display: grid; gap: 16px; }
     .card {
       background: rgba(7, 10, 22, 0.72);
@@ -70,6 +85,9 @@
   </style>
 </head>
 <body>
+  <!-- UI logo pinned to the page (not part of the generated PNG) -->
+  <img src="logo.png" class="siteLogo" alt="Logo" />
+
   <div class="wrap">
     <div class="card">
       <h1>Profile Frame Generator</h1>
@@ -113,8 +131,8 @@
       // Public-facing assets (keep in same folder as this page)
       const ASSETS = {
         circleFrame: "circle.png",
-        cornerFrame: "corner.jpg",
-        logo: "logo.png"
+        cornerFrame: "corner.jpg"
+        // logo.png is now a PAGE UI element, not a canvas asset
       };
 
       const elFile = document.getElementById("file");
@@ -224,17 +242,6 @@
           // If your overlay has a lot of transparent padding, bump this slightly (e.g., 1.10)
           const OVERLAY_OVERSCALE = 1.12;
           drawOverlayContain(overlay, OVERLAY_OVERSCALE);
-
-          // 3) Corner logo (always on)
-          const logo = await loadImage(ASSETS.logo);
-
-          const pad = 28;
-          const logoW = 240; // resize logo here
-          const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW;
-
-          ctx.globalAlpha = 0.95;
-          ctx.drawImage(logo, SIZE - logoW - pad, SIZE - logoH - pad, logoW, logoH);
-          ctx.globalAlpha = 1;
 
           // Export
           canvas.toBlob((blob) => {
