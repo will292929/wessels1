@@ -18,14 +18,14 @@
     .siteLogo {
       position: fixed;
       top: calc(20px + env(safe-area-inset-top));
-      left: calc(20px + env(safe-area-inset-left)); /* change to right: 20px; if you want top-right */
+      left: calc(20px + env(safe-area-inset-left));
       width: 140px;
       height: auto;
       z-index: 1000;
       filter: drop-shadow(0 8px 18px rgba(0,0,0,0.45));
       user-select: none;
       -webkit-user-drag: none;
-      pointer-events: none; /* won't block clicks */
+      pointer-events: none;
     }
 
     /* Mobile layout */
@@ -120,20 +120,27 @@
       <div class="row">
         <div class="left">
           <div>
-            <div class="small">Upload your photo</div>
+            <div class="small">Add your photo</div>
 
-            <!-- Mobile: allow selfie capture -->
-            <input id="file" type="file" accept="image/*" capture="user" />
+            <!-- Two-button UX: always gives the user the option -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:6px;">
+              <button class="btn" type="button" id="btnSelfie">Take Selfie</button>
+              <button class="btn" type="button" id="btnUpload">Upload Photo</button>
+            </div>
+
+            <!-- Hidden inputs -->
+            <input id="fileSelfie" type="file" accept="image/*" capture="user" style="display:none;" />
+            <input id="fileUpload" type="file" accept="image/*" style="display:none;" />
           </div>
 
           <div class="toggleWrap">
-            <div class="small">Frame style</div>
+            <div class="small">Style</div>
             <div class="toggleRow" id="modeSwitch" aria-label="Frame style toggle">
               <span class="pill on" id="labelCircle">Circle</span>
               <div class="toggle" id="toggle" data-on="false" role="switch" aria-checked="false">
                 <div class="knob"></div>
               </div>
-              <span class="pill" id="labelCorner">Corner</span>
+              <span class="pill" id="labelCorner">Banner</span>
             </div>
           </div>
         </div>
@@ -141,7 +148,7 @@
         <button id="download" class="btn" disabled>Download PNG</button>
       </div>
 
-      <div id="status" class="small hint">Upload a photo to begin.</div>
+      <div id="status" class="small hint">Add a photo to begin.</div>
       <div id="err" class="error"></div>
     </div>
 
@@ -161,7 +168,6 @@
         cornerFrame: "corner.png"
       };
 
-      const elFile = document.getElementById("file");
       const elDownload = document.getElementById("download");
       const elStatus = document.getElementById("status");
       const elErr = document.getElementById("err");
@@ -173,6 +179,12 @@
 
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
+
+      // Two input flow
+      const elFileSelfie = document.getElementById("fileSelfie");
+      const elFileUpload = document.getElementById("fileUpload");
+      const btnSelfie = document.getElementById("btnSelfie");
+      const btnUpload = document.getElementById("btnUpload");
 
       let userImg = null;
       let lastBlobUrl = null;
@@ -270,7 +282,7 @@
         ctx.clearRect(0, 0, SIZE, SIZE);
 
         if (!userImg) {
-          setStatus("Upload a photo to begin.");
+          setStatus("Add a photo to begin.");
           return;
         }
 
@@ -283,8 +295,11 @@
           const overlay = await loadImage(overlaySrc);
 
           if (getMode() === "corner") {
-            drawOverlayBottom(overlay, 0.90, 0);
+            // 90% size, bottom anchored
+            // If your PNG has transparent bottom padding, set yNudgePx to something like +20
+            drawOverlayBottom(overlay, 0.90, +40);
           } else {
+            // keep existing behavior for circle
             const OVERLAY_OVERSCALE = 1.12;
             drawOverlayContain(overlay, OVERLAY_OVERSCALE);
           }
@@ -307,14 +322,18 @@
         if (!lastBlobUrl) return;
         const a = document.createElement("a");
         a.href = lastBlobUrl;
-        a.download = `wessels-${getMode()}-frame.png`;
+        a.download = `Voting-for-Wessels.png`;
         document.body.appendChild(a);
         a.click();
         a.remove();
       }
 
-      elFile.addEventListener("change", async (ev) => {
+      async function handleFilePick(ev) {
         const f = ev.target.files && ev.target.files[0];
+
+        // reset so picking the same file twice still triggers "change"
+        ev.target.value = "";
+
         if (!f) return;
         try {
           userImg = await readFileAsImage(f);
@@ -323,7 +342,15 @@
           userImg = null;
           setError(e.message || String(e));
         }
-      });
+      }
+
+      // Buttons open the appropriate picker
+      btnSelfie.addEventListener("click", () => elFileSelfie.click());
+      btnUpload.addEventListener("click", () => elFileUpload.click());
+
+      // Handle both inputs with one handler
+      elFileSelfie.addEventListener("change", handleFilePick);
+      elFileUpload.addEventListener("change", handleFilePick);
 
       modeSwitch.addEventListener("click", async () => {
         setMode(getMode() === "circle" ? "corner" : "circle");
@@ -334,7 +361,7 @@
 
       // init
       setMode("circle");
-      setStatus("Upload a photo to begin.");
+      setStatus("Add a photo to begin.");
 
       // Logo load detection: only reserve space if logo successfully loads
       const logo = document.getElementById("siteLogo");
