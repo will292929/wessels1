@@ -28,14 +28,22 @@
       pointer-events: none; /* won't block clicks */
     }
 
-    /* Mobile layout: reserve room for the fixed logo so it can't cover the title */
+    /* Mobile layout */
     @media (max-width: 600px) {
+      /* Default: do NOT reserve logo space unless the logo actually loads */
       body {
-        padding-top: calc(120px + env(safe-area-inset-top));
+        padding-top: calc(16px + env(safe-area-inset-top));
         padding-left: calc(16px + env(safe-area-inset-left));
         padding-right: calc(16px + env(safe-area-inset-right));
         padding-bottom: calc(16px + env(safe-area-inset-bottom));
+        background-attachment: scroll; /* mobile-friendly */
       }
+
+      /* Only reserve room for the fixed logo if it successfully loads */
+      body.hasLogo {
+        padding-top: calc(120px + env(safe-area-inset-top));
+      }
+
       .siteLogo {
         top: calc(12px + env(safe-area-inset-top));
         left: calc(12px + env(safe-area-inset-left));
@@ -98,13 +106,12 @@
     }
     .toggle[data-on="true"] .knob { transform: translateX(28px); }
 
-    /* Nice helper text */
     .hint { margin-top: 10px; }
   </style>
 </head>
 <body>
   <!-- UI logo pinned to the page (not part of the generated PNG) -->
-  <img src="logo.png" class="siteLogo" alt="Logo" />
+  <img id="siteLogo" src="logo.png" class="siteLogo" alt="Logo" />
 
   <div class="wrap">
     <div class="card">
@@ -114,7 +121,9 @@
         <div class="left">
           <div>
             <div class="small">Upload your photo</div>
-            <input id="file" type="file" accept="image/*" />
+
+            <!-- Mobile: allow selfie capture -->
+            <input id="file" type="file" accept="image/*" capture="user" />
           </div>
 
           <div class="toggleWrap">
@@ -150,7 +159,6 @@
       const ASSETS = {
         circleFrame: "circle.png",
         cornerFrame: "corner.png"
-        // logo.png is now a PAGE UI element, not a canvas asset
       };
 
       const elFile = document.getElementById("file");
@@ -239,6 +247,23 @@
         ctx.drawImage(img, x, y, w, h);
       }
 
+      // Corner mode: 90% size + anchored to bottom, centered horizontally
+      function drawOverlayBottom(img, scaleFactor = 1.0, yNudgePx = 0) {
+        const ow = img.naturalWidth || img.width;
+        const oh = img.naturalHeight || img.height;
+
+        const baseScale = Math.min(SIZE / ow, SIZE / oh);
+        const scale = baseScale * scaleFactor;
+
+        const w = ow * scale;
+        const h = oh * scale;
+
+        const x = (SIZE - w) / 2;
+        const y = (SIZE - h) + yNudgePx;
+
+        ctx.drawImage(img, x, y, w, h);
+      }
+
       async function render() {
         setError("");
         elDownload.disabled = true;
@@ -253,13 +278,16 @@
           // 1) Photo
           drawCover(userImg, 0, 0, SIZE, SIZE);
 
-          // 2) Frame overlay (no squish)
+          // 2) Frame overlay
           const overlaySrc = getMode() === "circle" ? ASSETS.circleFrame : ASSETS.cornerFrame;
           const overlay = await loadImage(overlaySrc);
 
-          // If your overlay has a lot of transparent padding, bump this slightly (e.g., 1.10)
-          const OVERLAY_OVERSCALE = 1.12;
-          drawOverlayContain(overlay, OVERLAY_OVERSCALE);
+          if (getMode() === "corner") {
+            drawOverlayBottom(overlay, 0.90, 0);
+          } else {
+            const OVERLAY_OVERSCALE = 1.12;
+            drawOverlayContain(overlay, OVERLAY_OVERSCALE);
+          }
 
           // Export
           canvas.toBlob((blob) => {
@@ -307,6 +335,24 @@
       // init
       setMode("circle");
       setStatus("Upload a photo to begin.");
+
+      // Logo load detection: only reserve space if logo successfully loads
+      const logo = document.getElementById("siteLogo");
+      if (logo) {
+        logo.addEventListener("load", () => {
+          document.body.classList.add("hasLogo");
+        });
+
+        logo.addEventListener("error", () => {
+          document.body.classList.remove("hasLogo");
+          logo.style.display = "none";
+        });
+
+        // If cached and already loaded
+        if (logo.complete && logo.naturalWidth > 0) {
+          document.body.classList.add("hasLogo");
+        }
+      }
     })();
   </script>
 </body>
