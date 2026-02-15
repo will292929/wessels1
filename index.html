@@ -14,10 +14,10 @@
     .left { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
     .small { font-size: 13px; opacity: 0.85; line-height: 1.35; }
     .error { font-size: 13px; color: #ffb4b4; white-space: pre-wrap; margin-top: 10px; }
+
     canvas { width: 100%; max-width: 560px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.25); }
 
     input[type="file"] { color: #fff; }
-    select { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 10px 12px; }
 
     .btn {
       cursor: pointer;
@@ -29,7 +29,33 @@
       font-weight: 650;
     }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    code { opacity: 0.95; }
+
+    /* Customer-friendly toggle */
+    .toggleWrap { display: flex; flex-direction: column; gap: 6px; }
+    .toggleRow { display: inline-flex; align-items: center; gap: 10px; user-select: none; }
+    .pill { font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); opacity: 0.9; }
+    .pill.on { opacity: 1; border-color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.12); }
+    .toggle {
+      position: relative;
+      width: 58px;
+      height: 30px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.22);
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .knob {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #fff;
+      transition: transform 160ms ease;
+    }
+    .toggle[data-on="true"] .knob { transform: translateX(28px); }
   </style>
 </head>
 <body>
@@ -44,12 +70,15 @@
             <input id="file" type="file" accept="image/*" />
           </div>
 
-          <div>
-            <div class="small">Mode</div>
-            <select id="mode">
-              <option value="circle">Circle (circle.png)</option>
-              <option value="corner">Corner (corner.jpg)</option>
-            </select>
+          <div class="toggleWrap">
+            <div class="small">Frame style</div>
+            <div class="toggleRow" id="modeSwitch" title="Switch frame style">
+              <span class="pill on" id="labelCircle">Circle</span>
+              <div class="toggle" id="toggle" data-on="false" role="switch" aria-checked="false">
+                <div class="knob"></div>
+              </div>
+              <span class="pill" id="labelCorner">Corner</span>
+            </div>
           </div>
         </div>
 
@@ -57,9 +86,10 @@
       </div>
 
       <div class="small" style="margin-top: 12px;">
-        Keep these in the same folder as this page:
-        <code>circle.png</code>, <code>corner.jpg</code>.
-        Optional: <code>logo.png</code>.
+        Please keep these files in the same folder as this page:
+        <span class="pill">circle.png</span>
+        <span class="pill">corner.jpg</span>
+        <span class="pill">logo.png (optional)</span>
       </div>
 
       <div id="status" class="small" style="margin-top: 10px;"></div>
@@ -77,10 +107,14 @@
       const SIZE = 1080;
 
       const elFile = document.getElementById("file");
-      const elMode = document.getElementById("mode");
       const elDownload = document.getElementById("download");
       const elStatus = document.getElementById("status");
       const elErr = document.getElementById("err");
+
+      const modeSwitch = document.getElementById("modeSwitch");
+      const toggle = document.getElementById("toggle");
+      const labelCircle = document.getElementById("labelCircle");
+      const labelCorner = document.getElementById("labelCorner");
 
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
@@ -90,15 +124,25 @@
 
       const setError = (msg) => (elErr.textContent = msg || "");
       const setStatus = (msg) => (elStatus.textContent = msg || "");
-      const getMode = () => elMode.value;
+
+      function getMode() {
+        return toggle.dataset.on === "true" ? "corner" : "circle";
+      }
+
+      function setMode(mode) {
+        const on = mode === "corner";
+        toggle.dataset.on = on ? "true" : "false";
+        toggle.setAttribute("aria-checked", on ? "true" : "false");
+        labelCircle.classList.toggle("on", !on);
+        labelCorner.classList.toggle("on", on);
+      }
 
       function loadImage(src) {
         return new Promise((resolve, reject) => {
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => resolve(img);
-          img.onerror = () =>
-            reject(new Error(`Failed to load "${src}". Make sure you're running via http(s), not file://`));
+          img.onerror = () => reject(new Error(`Could not load "${src}". Please make sure the file is in the same folder as this page.`));
           img.src = src;
         });
       }
@@ -108,7 +152,7 @@
           const url = URL.createObjectURL(file);
           const img = new Image();
           img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read uploaded image.")); };
+          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That photo could not be opened. Please try a different image.")); };
           img.src = url;
         });
       }
@@ -134,20 +178,18 @@
         ctx.clearRect(0, 0, SIZE, SIZE);
 
         if (!userImg) {
-          setStatus(`Select a mode and upload a photo.`);
+          setStatus("Upload a photo to see a preview.");
           return;
         }
 
         try {
-          // base photo
           drawCover(userImg, 0, 0, SIZE, SIZE);
 
-          // overlay
           const overlaySrc = getMode() === "circle" ? "circle.png" : "corner.jpg";
           const overlay = await loadImage(overlaySrc);
           ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
 
-          // optional logo (silent if missing)
+          // optional logo (silently skipped if missing)
           try {
             const logo = await loadImage("logo.png");
             const pad = 28;
@@ -155,17 +197,18 @@
             const scale = Math.min(1, maxW / (logo.naturalWidth || logo.width));
             const w = (logo.naturalWidth || logo.width) * scale;
             const h = (logo.naturalHeight || logo.height) * scale;
+
             ctx.globalAlpha = 0.95;
             ctx.drawImage(logo, SIZE - w - pad, SIZE - h - pad, w, h);
             ctx.globalAlpha = 1;
           } catch (_) {}
 
           canvas.toBlob((blob) => {
-            if (!blob) { setError("PNG export failed (browser blocked)."); return; }
+            if (!blob) { setError("PNG export failed in this browser."); return; }
             if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
             lastBlobUrl = URL.createObjectURL(blob);
             elDownload.disabled = false;
-            setStatus(`Ready: ${getMode()} mode.`);
+            setStatus("Ready to download.");
           }, "image/png");
         } catch (e) {
           setError(e.message || String(e));
@@ -194,10 +237,16 @@
         }
       });
 
-      elMode.addEventListener("change", render);
+      modeSwitch.addEventListener("click", async () => {
+        setMode(getMode() === "circle" ? "corner" : "circle");
+        await render();
+      });
+
       elDownload.addEventListener("click", download);
 
-      setStatus("Select a mode and upload a photo.");
+      // init
+      setMode("circle");
+      setStatus("Upload a photo to see a preview.");
     })();
   </script>
 </body>
